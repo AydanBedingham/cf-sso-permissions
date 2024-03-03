@@ -2,7 +2,7 @@
 
 This project provides a CloudFormation Template that demonstrates the assignment of AWS Permissions to existing AWS IAM Identity Center Groups.
 
-## Pre-requisites
+## Prerequisites
 At the time of writing (2024-03) it's not currently possible to define IAM Identity Center Users and Groups via CloudFormation.
 
 This project assumes an environment with a Shared Services Account and Development Account with IAM Identity Center users, groups and user-group relationships already created (either manually via the AWS Console or synced from an External Identity Provider) for the following groups:
