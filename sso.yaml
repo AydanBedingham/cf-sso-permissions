@@ -1,0 +1,164 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudFormation template that creates permission sets and assigns them to existing SSO Groups for specific accounts
+
+Parameters:
+
+  SSOInstanceId:
+    Description: AWS SSO Instance ID eg. ssoins-0000000000000000
+    Type: String
+    AllowedPattern: "^(sso)?ins-[a-zA-Z0-9-.]{16}$"
+
+Mappings:
+
+  # Map of AWS Account Ids
+  AccountInfo:
+    shared:
+      AccountNumber: '000000000000' # Replace with your shared services account number
+    dev:
+      AccountNumber: '000000000000' # Replace with your dev account number
+
+  # Map of SSO Group Ids
+  GroupInfo:
+    CUSTOM-DEVELOPER-GROUP:
+      GroupId: '00000000-0000-0000-0000-000000000000' # Replace with your GroupId
+    CUSTOM-DEVOPS-GROUP:
+      GroupId: '00000000-0000-0000-0000-000000000000' # Replace with your GroupId
+
+Resources:
+
+##########################################################################################
+# Assignments
+# 
+# Assigns a specific Permission Set to users in a specific Group for a specific account.
+# eg. Assign 'PermissionDeveloperAccess' Permission Set to users in the 'CUSTOM-DEVELOPER-GROUP' Group for the 'shared' Account.
+##########################################################################################
+
+  AssigmentDeveloperGroupSharedEnvAccess:
+    Type: AWS::SSO::Assignment
+    Properties:
+      PermissionSetArn: !GetAtt PermissionDeveloperAccess.PermissionSetArn
+      PrincipalId: !FindInMap [ GroupInfo, CUSTOM-DEVELOPER-GROUP, GroupId]
+      TargetId: !FindInMap [ AccountInfo, shared, AccountNumber]
+      TargetType: AWS_ACCOUNT
+      PrincipalType: GROUP
+      InstanceArn: !Sub 'arn:aws:sso:::instance/${SSOInstanceId}'
+
+  AssigmentDeveloperGroupDevEnvAccess:
+    Type: AWS::SSO::Assignment
+    Properties:
+      PermissionSetArn: !GetAtt PermissionPowerUserAccess.PermissionSetArn
+      PrincipalId: !FindInMap [ GroupInfo, CUSTOM-DEVELOPER-GROUP, GroupId]
+      TargetId: !FindInMap [ AccountInfo, dev, AccountNumber]
+      TargetType: AWS_ACCOUNT
+      PrincipalType: GROUP
+      InstanceArn: !Sub 'arn:aws:sso:::instance/${SSOInstanceId}'
+
+  AssigmentDevopsGroupSharedEnvAccess:
+    Type: AWS::SSO::Assignment
+    Properties:
+      PermissionSetArn: !GetAtt PermissionDevopsAccess.PermissionSetArn
+      PrincipalId: !FindInMap [ GroupInfo, CUSTOM-DEVOPS-GROUP, GroupId]
+      TargetId: !FindInMap [ AccountInfo, shared, AccountNumber]
+      TargetType: AWS_ACCOUNT
+      PrincipalType: GROUP
+      InstanceArn: !Sub 'arn:aws:sso:::instance/${SSOInstanceId}'
+
+##########################################################################################
+# Permission Sets
+# 
+# Permission sets uses policies to define a level of access.
+# eg. The 'PermissionDeveloperAccess' Permission Set provides permissions to 'commit code to any repository'.
+#
+# NOTE: Try to define the permissions in an account agnostic manner.
+##########################################################################################
+
+  PermissionDeveloperAccess:
+    Type: AWS::SSO::PermissionSet
+    Properties:
+      Name: DeveloperAccess
+      Description: Provides Developer access to AWS Services
+      ManagedPolicies:
+        - arn:aws:iam::aws:policy/AWSCodeCommitReadOnly
+        - arn:aws:iam::aws:policy/AWSCodeBuildDeveloperAccess
+        - arn:aws:iam::aws:policy/AWSCodeDeployDeployerAccess
+        - arn:aws:iam::aws:policy/AWSCodePipeline_ReadOnlyAccess
+      InlinePolicy: |
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Sid": "AllowWriteAccess",
+                    "Effect": "Allow",
+                    "Action": [
+                        "codecommit:CreateBranch",
+                        "codecommit:CreatePullRequest",
+                        "codecommit:DeleteBranch",
+                        "codecommit:GitPull",
+                        "codecommit:GitPush",
+                        "codecommit:PutFile",
+                        "codecommit:DeleteFile",
+                        "codecommit:UpdatePullRequest*",
+                        "codecommit:MergeBranches*",
+                        "codecommit:MergePullRequest*",
+                        "codecommit:PostComment*",
+                        "codecommit:UpdateComment*"
+                    ],
+                    "Resource": "*"
+                },
+                {
+                    "Sid": "DenyCommitsToCoreBranches",
+                    "Effect": "Deny",
+                    "Action": [
+                        "codecommit:GitPush",
+                        "codecommit:DeleteBranch",
+                        "codecommit:PutFile",
+                        "codecommit:DeleteFile"
+                    ],
+                    "Resource": "*",
+                    "Condition": {
+                        "StringEqualsIfExists": {
+                            "codecommit:References": [
+                                "refs/heads/main",
+                                "refs/heads/develop"
+                            ]
+                        }
+                    }
+                }
+            ]
+        }
+      InstanceArn: !Sub 'arn:aws:sso:::instance/${SSOInstanceId}'
+
+  PermissionDevopsAccess:
+    Type: AWS::SSO::PermissionSet
+    Properties:
+      Name: DevopsAccess
+      Description: Provides Devops access to AWS Services
+      ManagedPolicies:
+        - arn:aws:iam::aws:policy/AWSCodeCommitPowerUser
+        - arn:aws:iam::aws:policy/AWSCodeBuildAdminAccess
+        - arn:aws:iam::aws:policy/AWSCodeDeployFullAccess
+        - arn:aws:iam::aws:policy/AWSCodePipeline_FullAccess
+      InlinePolicy: |
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Sid": "AllowExtraWriteAccess",
+                    "Effect": "Allow",
+                    "Action": [
+                        "codecommit:Delete*"
+                    ],
+                    "Resource": "*"
+                }
+            ]
+        }
+      InstanceArn: !Sub 'arn:aws:sso:::instance/${SSOInstanceId}'
+
+  PermissionPowerUserAccess:
+    Type: AWS::SSO::PermissionSet
+    Properties:
+      Name: CustomPowerUserAccess
+      Description: Provides Power User access to AWS Services
+      ManagedPolicies: 
+        - 'arn:aws:iam::aws:policy/PowerUserAccess'
+      InstanceArn: !Sub 'arn:aws:sso:::instance/${SSOInstanceId}'
